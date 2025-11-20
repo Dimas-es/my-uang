@@ -7,14 +7,34 @@ const summaryItems = [
   { label: "Saldo", value: "35.000" },
 ];
 
+type Category = {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  iconBg: string;
+};
+
+const categories: Record<string, Category> = {
+  transport: {
+    id: "transport",
+    label: "Transport",
+    icon: <FiTruck className="h-5 w-5" />,
+    iconBg: "bg-emerald-500",
+  },
+  lifestyle: {
+    id: "lifestyle",
+    label: "Lifestyle",
+    icon: <FiCoffee className="h-5 w-5" />,
+    iconBg: "bg-lime-500",
+  },
+};
+
 type Transaction = {
   id: string;
   title: string;
   amount: number;
   type: "expense" | "income";
-  category: string;
-  icon: ReactNode;
-  iconBg: string;
+  categoryId: keyof typeof categories;
 };
 
 type DailyRecord = {
@@ -43,18 +63,14 @@ const dailyRecords: DailyRecord[] = [
         title: "gojek",
         amount: 50000,
         type: "income",
-        category: "Transport",
-        iconBg: "bg-emerald-500",
-        icon: <FiTruck className="h-5 w-5" />,
+        categoryId: "transport",
       },
       {
         id: "trx-marlboro",
         title: "Marlboro",
         amount: 15000,
         type: "expense",
-        category: "Lifestyle",
-        iconBg: "bg-lime-500",
-        icon: <FiCoffee className="h-5 w-5" />,
+        categoryId: "lifestyle",
       },
     ],
   },
@@ -68,7 +84,7 @@ export function CatatanPage() {
     <>
       <header>
         <div className="text-sm text-zinc-400">2025</div>
-        <div className="mt-1 flex items-center text-3xl font-semibold text-white">
+        <div className="mt-1 flex items-center text-3xl font-normal text-white">
           Nov
           <svg
             className="ml-2 h-5 w-5 text-zinc-400"
@@ -84,7 +100,7 @@ export function CatatanPage() {
             {summaryItems.map((item) => (
               <div key={item.label}>
                 <div>{item.label}</div>
-                <div className="mt-3 text-lg font-medium text-white">{item.value}</div>
+                <div className="mt-3 text-base font-normal text-white">{item.value}</div>
               </div>
             ))}
           </div>
@@ -96,7 +112,7 @@ export function CatatanPage() {
           <article key={record.id} className="rounded-2xl px-4 py-1">
             <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-500">
               <div className="flex items-center gap-2 text-white">
-                <span className="text-[0.7rem] font-semibold leading-none">{record.dateLabel}</span>
+                <span className="text-[0.7rem] font-normal leading-none">{record.dateLabel}</span>
                 <span className="text-[0.7rem] text-zinc-500 leading-none">{record.day}</span>
               </div>
               <div className="flex items-center gap-4 text-[0.7rem]">
@@ -106,27 +122,30 @@ export function CatatanPage() {
             </div>
 
             <ul className="mt-4 space-y-3">
-              {record.items.map((item) => (
-                <li key={item.id} className="flex items-center justify-between border-b border-white/10 px-0 py-3 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-full text-black ${item.iconBg}`}>
-                      {item.icon}
+              {record.items.map((item) => {
+                const category = categories[item.categoryId];
+                return (
+                  <li key={item.id} className="flex items-center justify-between border-b border-white/10 px-0 py-3 last:border-b-0">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-12 w-12 items-center justify-center rounded-full text-black ${category.iconBg}`}
+                        title={category.label}
+                      >
+                        {category.icon}
+                      </div>
+                      <p className="text-base capitalize text-white">{item.title}</p>
                     </div>
-                    <div className="leading-tight">
-                      <p className="text-base font-medium capitalize text-white">{item.title}</p>
-                      <p className="text-xs uppercase tracking-wide text-zinc-500">{item.category}</p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-base font-semibold ${
-                      item.type === "expense" ? "text-red-300" : "text-emerald-300"
-                    }`}
-                  >
-                    {item.type === "expense" ? "-" : ""}
-                    {formatCurrency(item.amount)}
-                  </span>
-                </li>
-              ))}
+                    <span
+                      className={`text-base font-normal ${
+                        item.type === "expense" ? "text-white" : "text-white"
+                      }`}
+                    >
+                      {item.type === "expense" ? "-" : ""}
+                      {formatCurrency(item.amount)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </article>
         ))}
