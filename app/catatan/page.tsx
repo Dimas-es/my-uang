@@ -1,80 +1,4 @@
-import type { ReactNode } from "react";
-import { FiCoffee, FiTruck } from "react-icons/fi";
-
-const summaryItems = [
-  { label: "Pengeluaran", value: "15.000" },
-  { label: "Pemasukan", value: "50.000" },
-  { label: "Saldo", value: "35.000" },
-];
-
-type Category = {
-  id: string;
-  label: string;
-  icon: ReactNode;
-  iconBg: string;
-};
-
-const categories: Record<string, Category> = {
-  transport: {
-    id: "transport",
-    label: "Transport",
-    icon: <FiTruck className="h-5 w-5" />,
-    iconBg: "bg-emerald-500",
-  },
-  lifestyle: {
-    id: "lifestyle",
-    label: "Lifestyle",
-    icon: <FiCoffee className="h-5 w-5" />,
-    iconBg: "bg-lime-500",
-  },
-};
-
-type Transaction = {
-  id: string;
-  title: string;
-  amount: number;
-  type: "expense" | "income";
-  categoryId: keyof typeof categories;
-};
-
-type DailyRecord = {
-  id: string;
-  dateLabel: string;
-  day: string;
-  totals: {
-    expense: string;
-    income: string;
-  };
-  items: Transaction[];
-};
-
-const dailyRecords: DailyRecord[] = [
-  {
-    id: "2025-11-20",
-    dateLabel: "20 Nov",
-    day: "Kamis",
-    totals: {
-      expense: "15.000",
-      income: "50.000",
-    },
-    items: [
-      {
-        id: "trx-gojek",
-        title: "gojek",
-        amount: 50000,
-        type: "income",
-        categoryId: "transport",
-      },
-      {
-        id: "trx-marlboro",
-        title: "Marlboro",
-        amount: 15000,
-        type: "expense",
-        categoryId: "lifestyle",
-      },
-    ],
-  },
-];
+import { categories, dailyRecords, summaryItems } from "@/app/mock/catatan";
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("id-ID", { minimumFractionDigits: 0 });
@@ -154,3 +78,4 @@ export function CatatanPage() {
   );
 }
 
+export default CatatanPage;
