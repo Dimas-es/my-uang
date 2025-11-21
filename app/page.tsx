@@ -1,4 +1,4 @@
-import { CatatanPage } from "@/app/features/catatan/CatatanPage";
+import { CatatanPage } from "@/app/catatan/page";
 
 export default function Home() {
   return <CatatanPage />;

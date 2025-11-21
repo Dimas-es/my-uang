@@ -37,6 +37,7 @@ export const defaultNavItems: BottomNavItem[] = [
   {
     label: "",
     accent: true,
+    href: "/tambahkan",
     icon: <FiPlus className="h-5 w-5" />,
   },
 ];
@@ -52,6 +53,22 @@ export function BottomNav({ items = defaultNavItems, onAddClick, className = "" 
     const isAccent = item.accent;
 
     if (isAccent) {
+      if (item.href) {
+        return (
+          <Link
+            key={item.label || "add"}
+            href={item.href}
+            className="flex flex-1 flex-col items-center gap-1 text-zinc-500"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-400 text-black shadow-[0_10px_30px_rgba(255,223,70,0.35)]">
+              {item.icon ?? (
+                <span className="h-2 w-2 rounded-md bg-current" aria-hidden="true" />
+              )}
+            </span>
+            <span>{item.label}</span>
+          </Link>
+        );
+      }
       return (
         <button
           key={item.label || "add"}
@@ -109,11 +126,26 @@ export function BottomNav({ items = defaultNavItems, onAddClick, className = "" 
 
   return (
     <nav
-      className={`relative flex w-full items-center justify-between bg-[#0f0f0f] px-0 py-4 text-[0.7rem] uppercase tracking-wide text-zinc-500 shadow-[0_-5px_20px_rgba(0,0,0,0.3)] ${className}`}
+      className={`relative flex w-full items-center justify-between bg-[#0f0f0f] px-0 py-4 m-0 text-[0.7rem] uppercase tracking-wide text-zinc-500 shadow-[0_-5px_20px_rgba(0,0,0,0.3)] ${className}`}
     >
       {leading.map(renderItem)}
       {trailing.map(renderItem)}
     </nav>
+  );
+}
+
+export function BottomNavWrapper() {
+  const pathname = usePathname();
+  
+  // Hide bottom nav on tambahkan page
+  if (pathname === "/tambahkan") {
+    return null;
+  }
+
+  return (
+    <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50">
+      <BottomNav items={defaultNavItems} className="rounded-none border-t border-white/5" />
+    </footer>
   );
 }
 
