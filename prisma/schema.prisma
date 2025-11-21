@@ -1,0 +1,50 @@
+// Prisma schema generated to mirror the UI domain models defined in
+// `app/types/index.ts` and sample data from `app/mock/catatan.tsx`.
+// The data model keeps raw entities (Category, Transaction) minimal,
+// because richer UI groupings such as DailyRecord are derived at the
+// application layer.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Canonical list of spending/income categories. The `icon` field stores
+/// an identifier (e.g. `FiTruck`) that the UI maps to the actual React icon.
+enum CategoryFlow {
+  expense
+  income
+}
+
+model Category {
+  id        String        @id @default(cuid())
+  label     String
+  icon      String
+  iconBg    String
+  flow      CategoryFlow  @default(expense)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  transactions Transaction[]
+}
+
+/// Transaction log backing features such as Catatan, Grafik, and Laporan.
+model Transaction {
+  id              String          @id @default(cuid())
+  title           String?
+  amount          Int
+  type            String
+  transactionDate DateTime        @map("transaction_date")
+  note            String?
+
+  categoryId String
+  category   Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

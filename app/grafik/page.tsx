@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FiChevronDown } from "react-icons/fi";
-import type { Transaction } from "@/app/types";
-import { categories, dailyRecords } from "@/app/mock";
+import type { DailyRecord, Transaction } from "@/app/types";
+import { useFinanceData, type ClientCategory } from "@/app/hooks/useFinanceData";
+import { isLightColor, resolveCategoryColor } from "@/lib/categoryColors";
+import { renderIcon } from "@/lib/iconMap";
 
 type FlowType = "expense" | "income";
 type PeriodKey = "day" | "week" | "month" | "year";
@@ -25,23 +27,14 @@ type ChartSection = {
   currentTimelineIndex?: number;
 };
 
-// Color mapping untuk chart berdasarkan iconBg dari categories
-const getCategoryColor = (categoryId: string): string => {
-  const category = categories[categoryId];
+const getCategoryColor = (categoryId: string, categoryMap: Record<string, ClientCategory>): string => {
+  const category = categoryMap[categoryId];
   if (!category) return "#888888";
-  
-  // Map iconBg ke color hex
-  const colorMap: Record<string, string> = {
-    "bg-emerald-500": "#4ade80",
-    "bg-lime-500": "#f5c84c",
-  };
-  
-  return colorMap[category.iconBg] || "#888888";
+  return resolveCategoryColor(category.iconBg);
 };
 
-// Extract semua transactions dari dailyRecords
-const getAllTransactions = (): Transaction[] => {
-  return dailyRecords.flatMap((record) => record.items);
+const getAllTransactions = (records: DailyRecord[]): Transaction[] => {
+  return records.flatMap((record) => record.items);
 };
 
 // Helper untuk mendapatkan nomor minggu dalam tahun (ISO week)
@@ -77,8 +70,11 @@ const getWeekRange = (weekOffset: number): { start: Date; end: Date } => {
   return { start: startDate, end: endDate };
 };
 
-// Helper function untuk mengaggregasi transactions menjadi chart data
-function aggregateTransactions(transactions: Transaction[], type: FlowType): ChartCategory[] {
+function aggregateTransactions(
+  transactions: Transaction[],
+  type: FlowType,
+  categoryMap: Record<string, ClientCategory>,
+): ChartCategory[] {
   const filtered = transactions.filter((t) => t.type === type);
   const total = filtered.reduce((sum, t) => sum + t.amount, 0);
   
@@ -94,10 +90,10 @@ function aggregateTransactions(transactions: Transaction[], type: FlowType): Cha
   return Object.entries(grouped)
     .map(([catId, amount]) => ({
       id: catId,
-      label: categories[catId]?.label || catId,
+      label: categoryMap[catId]?.label || catId,
       percentage: total > 0 ? Math.round((amount / total) * 100) : 0,
       amount,
-      color: getCategoryColor(catId),
+      color: getCategoryColor(catId, categoryMap),
     }))
     .sort((a, b) => b.amount - a.amount);
 }
@@ -114,36 +110,18 @@ const periodTabs: { value: PeriodKey; label: string }[] = [
   { value: "year", label: "Tahun" },
 ];
 
-// Helper untuk mendapatkan transactions berdasarkan periode
-function getTransactionsByPeriod(period: PeriodKey, type: FlowType): Transaction[] {
-  // Ambil semua transactions dari dailyRecords
-  let filtered = getAllTransactions().filter((t) => t.type === type);
-  
-  // Filter berdasarkan periode
+function getTransactionsByPeriod(records: DailyRecord[], period: PeriodKey, type: FlowType): Transaction[] {
+  if (records.length === 0) return [];
+
   if (period === "day") {
-    // Hari ini - ambil dari dailyRecords yang paling baru
-    const latestRecord = dailyRecords[0];
-    if (latestRecord) {
-      filtered = latestRecord.items.filter((t) => t.type === type);
+    const latestRecord = records[0];
+    if (!latestRecord) {
+      return [];
     }
-  } else if (period === "week") {
-    // Minggu ini - ambil dari semua dailyRecords (asumsi semua dalam 1 minggu)
-    filtered = dailyRecords.flatMap((record) => 
-      record.items.filter((t) => t.type === type)
-    );
-  } else if (period === "month") {
-    // Bulan ini - ambil dari semua dailyRecords
-    filtered = dailyRecords.flatMap((record) => 
-      record.items.filter((t) => t.type === type)
-    );
-  } else if (period === "year") {
-    // Tahun ini - ambil dari semua dailyRecords
-    filtered = dailyRecords.flatMap((record) => 
-      record.items.filter((t) => t.type === type)
-    );
+    return latestRecord.items.filter((t) => t.type === type);
   }
-  
-  return filtered;
+
+  return records.flatMap((record) => record.items.filter((t) => t.type === type));
 }
 
 // Helper untuk generate timeline
@@ -212,92 +190,94 @@ const dayTimeline = getDayTimeline();
 const monthTimeline = getMonthTimeline();
 const yearTimeline = getYearTimeline();
 
-// Generate chart data dari transactions
-const chartData: Record<FlowType, Record<PeriodKey, ChartSection>> = {
-  expense: {
-    day: {
-      title: "Hari ini",
-      dateLabel: "Kamis, 20 Nov",
-      total: 0,
-      categories: [],
-      timeline: dayTimeline,
-      currentTimelineIndex: dayTimeline.length - 1,
+function createChartTemplate(): Record<FlowType, Record<PeriodKey, ChartSection>> {
+  return {
+    expense: {
+      day: {
+        title: "Hari ini",
+        dateLabel: "Kamis, 20 Nov",
+        total: 0,
+        categories: [],
+        timeline: dayTimeline,
+        currentTimelineIndex: dayTimeline.length - 1,
+      },
+      week: {
+        title: "Minggu ini",
+        dateLabel: "16 Nov - 22 Nov",
+        total: 0,
+        categories: [],
+        timeline: ["Minggu 44", "Minggu 45", "Minggu lalu", "Minggu ini"],
+        currentTimelineIndex: 3,
+      },
+      month: {
+        title: "November",
+        dateLabel: "2025",
+        total: 0,
+        categories: [],
+        timeline: monthTimeline,
+        currentTimelineIndex: monthTimeline.length - 1,
+      },
+      year: {
+        title: "2025",
+        dateLabel: "Jan - Des",
+        total: 0,
+        categories: [],
+        timeline: yearTimeline,
+        currentTimelineIndex: yearTimeline.length - 1,
+      },
     },
-    week: {
-      title: "Minggu ini",
-      dateLabel: "16 Nov - 22 Nov",
-      total: 0,
-      categories: [],
-      timeline: ["Minggu 44", "Minggu 45", "Minggu lalu", "Minggu ini"],
-      currentTimelineIndex: 3,
+    income: {
+      day: {
+        title: "Hari ini",
+        dateLabel: "Kamis, 20 Nov",
+        total: 0,
+        categories: [],
+        timeline: dayTimeline,
+        currentTimelineIndex: dayTimeline.length - 1,
+      },
+      week: {
+        title: "Minggu ini",
+        dateLabel: "16 Nov - 22 Nov",
+        total: 0,
+        categories: [],
+        timeline: ["Minggu 44", "Minggu 45", "Minggu lalu", "Minggu ini"],
+        currentTimelineIndex: 3,
+      },
+      month: {
+        title: "November",
+        dateLabel: "2025",
+        total: 0,
+        categories: [],
+        timeline: monthTimeline,
+        currentTimelineIndex: monthTimeline.length - 1,
+      },
+      year: {
+        title: "2025",
+        dateLabel: "Jan - Des",
+        total: 0,
+        categories: [],
+        timeline: yearTimeline,
+        currentTimelineIndex: yearTimeline.length - 1,
+      },
     },
-    month: {
-      title: "November",
-      dateLabel: "2025",
-      total: 0,
-      categories: [],
-      timeline: monthTimeline,
-      currentTimelineIndex: monthTimeline.length - 1,
-    },
-    year: {
-      title: "2025",
-      dateLabel: "Jan - Des",
-      total: 0,
-      categories: [],
-      timeline: yearTimeline,
-      currentTimelineIndex: yearTimeline.length - 1,
-    },
-  },
-  income: {
-    day: {
-      title: "Hari ini",
-      dateLabel: "Kamis, 20 Nov",
-      total: 0,
-      categories: [],
-      timeline: dayTimeline,
-      currentTimelineIndex: dayTimeline.length - 1,
-    },
-    week: {
-      title: "Minggu ini",
-      dateLabel: "16 Nov - 22 Nov",
-      total: 0,
-      categories: [],
-      timeline: ["Minggu 44", "Minggu 45", "Minggu lalu", "Minggu ini"],
-      currentTimelineIndex: 3,
-    },
-    month: {
-      title: "November",
-      dateLabel: "2025",
-      total: 0,
-      categories: [],
-      timeline: monthTimeline,
-      currentTimelineIndex: monthTimeline.length - 1,
-    },
-    year: {
-      title: "2025",
-      dateLabel: "Jan - Des",
-      total: 0,
-      categories: [],
-      timeline: yearTimeline,
-      currentTimelineIndex: yearTimeline.length - 1,
-    },
-  },
-};
+  };
+}
 
-// Populate chart data dari transactions
-Object.keys(chartData).forEach((flowType) => {
-  Object.keys(chartData[flowType as FlowType]).forEach((period) => {
-    const transactions = getTransactionsByPeriod(period as PeriodKey, flowType as FlowType);
-    const aggregated = aggregateTransactions(transactions, flowType as FlowType);
-    const total = transactions.reduce((sum, t) => sum + t.amount, 0);
-    
-    chartData[flowType as FlowType][period as PeriodKey] = {
-      ...chartData[flowType as FlowType][period as PeriodKey],
-      total,
-      categories: aggregated,
-    };
+function buildChartData(records: DailyRecord[], categoryMap: Record<string, ClientCategory>) {
+  const template = createChartTemplate();
+  (Object.keys(template) as FlowType[]).forEach((flowType) => {
+    (Object.keys(template[flowType]) as PeriodKey[]).forEach((period) => {
+      const transactions = getTransactionsByPeriod(records, period, flowType);
+      const total = transactions.reduce((sum, t) => sum + t.amount, 0);
+      template[flowType][period] = {
+        ...template[flowType][period],
+        total,
+        categories: aggregateTransactions(transactions, flowType, categoryMap),
+      };
+    });
   });
-});
+  return template;
+}
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("id-ID", { minimumFractionDigits: 0 });
@@ -331,16 +311,16 @@ function DonutChart({ percentage, color }: { percentage: number; color: string }
 }
 
 export function GrafikPage() {
+  const { categories: categoryMap, dailyRecords, loading, error } = useFinanceData();
+  const chartData = useMemo(() => buildChartData(dailyRecords, categoryMap), [dailyRecords, categoryMap]);
   const [flow, setFlow] = useState<FlowType>("expense");
   const [period, setPeriod] = useState<PeriodKey>("week");
-  const [selectedTimelineIndex, setSelectedTimelineIndex] = useState<number | null>(null);
+  const [selectedTimelineOverride, setSelectedTimelineOverride] = useState<number | null>(null);
+  const allTransactions = useMemo(() => getAllTransactions(dailyRecords), [dailyRecords]);
 
-  const section = useMemo(() => chartData[flow][period], [flow, period]);
-
-  // Reset timeline index saat period atau flow berubah
-  useEffect(() => {
-    setSelectedTimelineIndex(section.currentTimelineIndex ?? section.timeline.length - 1);
-  }, [period, flow, section.currentTimelineIndex, section.timeline.length]);
+  const section = useMemo(() => chartData[flow][period], [chartData, flow, period]);
+  const defaultTimelineIndex = section.currentTimelineIndex ?? section.timeline.length - 1;
+  const selectedTimelineIndex = selectedTimelineOverride ?? defaultTimelineIndex;
 
   // Get transactions berdasarkan timeline yang dipilih
   const getTransactionsByTimeline = useMemo(() => {
@@ -366,24 +346,22 @@ export function GrafikPage() {
       }
       
       const dateStr = targetDate.toISOString().split("T")[0];
-      filtered = getAllTransactions().filter(
-        (t) => t.transaction_date === dateStr && t.type === flow
+      filtered = allTransactions.filter(
+        (t) => t.transaction_date.startsWith(dateStr) && t.type === flow
       );
     } else if (period === "week") {
       const weekIndex = selectedTimelineIndex;
-      const today = new Date();
-      
       if (weekIndex === section.timeline.length - 1) {
         // Minggu ini
         const weekRange = getWeekRange(0);
-        filtered = getAllTransactions().filter((t) => {
+        filtered = allTransactions.filter((t) => {
           const txDate = new Date(t.transaction_date);
           return txDate >= weekRange.start && txDate <= weekRange.end && t.type === flow;
         });
       } else if (weekIndex === section.timeline.length - 2) {
         // Minggu lalu
         const weekRange = getWeekRange(1);
-        filtered = getAllTransactions().filter((t) => {
+        filtered = allTransactions.filter((t) => {
           const txDate = new Date(t.transaction_date);
           return txDate >= weekRange.start && txDate <= weekRange.end && t.type === flow;
         });
@@ -392,7 +370,7 @@ export function GrafikPage() {
         // Hitung offset berdasarkan index (0 = minggu paling lama)
         const weeksAgo = section.timeline.length - 1 - weekIndex;
         const weekRange = getWeekRange(weeksAgo);
-        filtered = getAllTransactions().filter((t) => {
+        filtered = allTransactions.filter((t) => {
           const txDate = new Date(t.transaction_date);
           return txDate >= weekRange.start && txDate <= weekRange.end && t.type === flow;
         });
@@ -415,7 +393,7 @@ export function GrafikPage() {
       
       const year = targetMonth.getFullYear();
       const month = String(targetMonth.getMonth() + 1).padStart(2, "0");
-      filtered = getAllTransactions().filter(
+      filtered = allTransactions.filter(
         (t) => t.transaction_date.startsWith(`${year}-${month}`) && t.type === flow
       );
     } else if (period === "year") {
@@ -424,29 +402,29 @@ export function GrafikPage() {
       
       if (yearIndex === section.timeline.length - 1) {
         // Tahun ini
-        filtered = getAllTransactions().filter(
+        filtered = allTransactions.filter(
           (t) => t.transaction_date.startsWith(String(targetYear)) && t.type === flow
         );
       } else if (yearIndex === section.timeline.length - 2) {
         // Tahun lalu
-        filtered = getAllTransactions().filter(
+        filtered = allTransactions.filter(
           (t) => t.transaction_date.startsWith(String(targetYear - 1)) && t.type === flow
         );
       } else {
         // Tahun sebelumnya
         const yearsAgo = section.timeline.length - 1 - yearIndex;
-        filtered = getAllTransactions().filter(
+        filtered = allTransactions.filter(
           (t) => t.transaction_date.startsWith(String(targetYear - yearsAgo)) && t.type === flow
         );
       }
     }
     
     return filtered;
-  }, [selectedTimelineIndex, period, flow, section.timeline.length]);
+  }, [selectedTimelineIndex, period, flow, section.timeline.length, allTransactions]);
 
   // Generate chart data dari transactions yang difilter
   const filteredSection = useMemo(() => {
-    const aggregated = aggregateTransactions(getTransactionsByTimeline, flow);
+    const aggregated = aggregateTransactions(getTransactionsByTimeline, flow, categoryMap);
     const total = getTransactionsByTimeline.reduce((sum, t) => sum + t.amount, 0);
     
     return {
@@ -454,7 +432,7 @@ export function GrafikPage() {
       total,
       categories: aggregated,
     };
-  }, [getTransactionsByTimeline, flow, section]);
+  }, [getTransactionsByTimeline, flow, section, categoryMap]);
 
   const dominantCategory = useMemo(() => {
     if (filteredSection.categories.length === 0) {
@@ -465,6 +443,18 @@ export function GrafikPage() {
     );
   }, [filteredSection]);
 
+  if (loading) {
+    return <div className="py-20 text-center text-zinc-500">Memuat data…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="py-20 text-center text-red-400">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="pb-10">
       <section className="mt-2">
@@ -472,7 +462,10 @@ export function GrafikPage() {
           <select
             className="flex w-full items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-4 py-3 text-left text-base text-white appearance-none"
             value={flow}
-            onChange={(event) => setFlow(event.target.value as FlowType)}
+            onChange={(event) => {
+              setFlow(event.target.value as FlowType);
+              setSelectedTimelineOverride(null);
+            }}
           >
             {flowOptions.map((option) => (
               <option key={option.value} value={option.value} className="text-black">
@@ -492,7 +485,10 @@ export function GrafikPage() {
             className={`flex-1 rounded-2xl px-3 py-2 ${
               tab.value === period ? "bg-yellow-400 text-black" : "bg-transparent"
             }`}
-            onClick={() => setPeriod(tab.value)}
+            onClick={() => {
+              setPeriod(tab.value);
+              setSelectedTimelineOverride(null);
+            }}
           >
             {tab.label}
           </button>
@@ -507,7 +503,7 @@ export function GrafikPage() {
               <button
                 key={label}
                 type="button"
-                onClick={() => setSelectedTimelineIndex(index)}
+                onClick={() => setSelectedTimelineOverride(index)}
                 className={`flex flex-col items-center px-2 cursor-pointer transition-colors ${
                   isActive ? "text-yellow-400" : "text-zinc-500 hover:text-zinc-300"
                 }`}
@@ -550,14 +546,20 @@ export function GrafikPage() {
                 <article key={category.id}>
                   <div className="flex items-center justify-between text-base">
                     <div className="flex items-center gap-3">
-                      <span
-                        className="h-9 w-9 rounded-full"
-                        style={{ backgroundColor: `${category.color}33` }}
-                      >
-                        <span
-                          className="sr-only"
-                        >{`Kategori ${category.label}`}</span>
-                      </span>
+                      {(() => {
+                        const meta = categoryMap[category.id];
+                        const bgColor = meta ? resolveCategoryColor(meta.iconBg) : category.color;
+                        const textColor = isLightColor(bgColor) ? "text-black" : "text-white";
+                        return (
+                          <span
+                            className={`flex h-9 w-9 items-center justify-center rounded-full ${textColor}`}
+                            style={{ backgroundColor: bgColor }}
+                          >
+                            {meta ? renderIcon(meta.iconKey, "h-4 w-4") : null}
+                            {!meta && <span className="sr-only">{`Kategori ${category.label}`}</span>}
+                          </span>
+                        );
+                      })()}
                       <div>
                         <p className="text-white">{category.label}</p>
                         <p className="text-xs text-zinc-500">{category.percentage}%</p>

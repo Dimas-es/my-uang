@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { FiChevronDown, FiTrendingUp, FiTrendingDown, FiMinus, FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import type { Transaction } from "@/app/types";
-import { categories, dailyRecords } from "@/app/mock";
+import type { DailyRecord, Transaction } from "@/app/types";
+import { useFinanceData, type ClientCategory } from "@/app/hooks/useFinanceData";
+import { renderIcon } from "@/lib/iconMap";
 
 type PeriodKey = "week" | "month" | "year";
 
@@ -13,12 +14,10 @@ const periodTabs: { value: PeriodKey; label: string }[] = [
   { value: "year", label: "Tahun" },
 ];
 
-// Extract semua transactions dari dailyRecords
-const getAllTransactions = (): Transaction[] => {
-  return dailyRecords.flatMap((record) => record.items);
+const getAllTransactions = (records: DailyRecord[]): Transaction[] => {
+  return records.flatMap((record) => record.items);
 };
 
-// Helper untuk mendapatkan nomor minggu dalam tahun (ISO week)
 const getWeekNumber = (date: Date): number => {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;
@@ -27,31 +26,26 @@ const getWeekNumber = (date: Date): number => {
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 };
 
-// Helper untuk mendapatkan tanggal awal dan akhir dari suatu minggu
 const getWeekRange = (year: number, week: number): { start: Date; end: Date } => {
   const startOfYear = new Date(year, 0, 1);
   const daysToAdd = (week - 1) * 7;
   const startDate = new Date(startOfYear);
   startDate.setDate(startDate.getDate() + daysToAdd);
-  
-  // Set ke Senin (day 1)
+
   const dayOfWeek = startDate.getDay();
   const diff = startDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
   startDate.setDate(diff);
-  
-  // Tanggal akhir minggu (Minggu)
+
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 6);
-  
+
   return { start: startDate, end: endDate };
 };
 
-// Helper untuk mendapatkan daftar periode yang tersedia dari data
-function getAvailablePeriods(period: PeriodKey): Array<{ value: string; label: string }> {
-  const allTransactions = getAllTransactions();
+function getAvailablePeriods(period: PeriodKey, transactions: Transaction[]): Array<{ value: string; label: string }> {
   const periods = new Set<string>();
 
-  allTransactions.forEach((t) => {
+  transactions.forEach((t) => {
     const date = new Date(t.transaction_date);
     if (period === "week") {
       const week = getWeekNumber(date);
@@ -66,7 +60,6 @@ function getAvailablePeriods(period: PeriodKey): Array<{ value: string; label: s
     }
   });
 
-  // Convert to array and sort
   const sorted = Array.from(periods).sort().reverse();
 
   return sorted.map((p) => {
@@ -79,26 +72,26 @@ function getAvailablePeriods(period: PeriodKey): Array<{ value: string; label: s
       const endMonth = monthNames[weekRange.end.getMonth()];
       const startDay = weekRange.start.getDate();
       const endDay = weekRange.end.getDate();
-      
+
       const today = new Date();
       const currentWeek = getWeekNumber(today);
       const currentYear = today.getFullYear();
-      
+
       if (weekNum === currentWeek && parseInt(year) === currentYear) {
         return { value: p, label: `Minggu ini (${startDay} ${startMonth} - ${endDay} ${endMonth})` };
       }
-      
+
       return { value: p, label: `Minggu ${weekNum} (${startDay} ${startMonth} - ${endDay} ${endMonth})` };
     } else if (period === "month") {
       const [year, month] = p.split("-");
       const monthNum = parseInt(month);
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      
+
       const today = new Date();
       if (monthNum === today.getMonth() + 1 && parseInt(year) === today.getFullYear()) {
         return { value: p, label: `${monthNames[monthNum - 1]} (Bulan ini)` };
       }
-      
+
       return { value: p, label: `${monthNames[monthNum - 1]} ${year}` };
     } else {
       const today = new Date();
@@ -110,74 +103,74 @@ function getAvailablePeriods(period: PeriodKey): Array<{ value: string; label: s
   });
 }
 
-// Helper untuk mendapatkan transactions berdasarkan periode spesifik
-function getTransactionsByPeriod(period: PeriodKey, selectedPeriod?: string): Transaction[] {
-  const allTransactions = getAllTransactions();
+function getTransactionsByPeriod(
+  period: PeriodKey,
+  transactions: Transaction[],
+  selectedPeriod?: string,
+): Transaction[] {
   const today = new Date();
 
   if (!selectedPeriod) {
-    // Default: periode saat ini
     if (period === "week") {
-      return allTransactions;
+      return transactions;
     } else if (period === "month") {
       const year = today.getFullYear();
       const month = String(today.getMonth() + 1).padStart(2, "0");
-      return allTransactions.filter((t) => t.transaction_date.startsWith(`${year}-${month}`));
+      return transactions.filter((t) => t.transaction_date.startsWith(`${year}-${month}`));
     } else if (period === "year") {
-      return allTransactions.filter((t) => t.transaction_date.startsWith(String(today.getFullYear())));
+      return transactions.filter((t) => t.transaction_date.startsWith(String(today.getFullYear())));
     }
   } else {
-    // Filter berdasarkan selectedPeriod
     if (period === "week") {
       const [year, week] = selectedPeriod.split("-W");
       const weekNum = parseInt(week);
       const weekRange = getWeekRange(parseInt(year), weekNum);
-      return allTransactions.filter((t) => {
+      return transactions.filter((t) => {
         const txDate = new Date(t.transaction_date);
         return txDate >= weekRange.start && txDate <= weekRange.end;
       });
     } else if (period === "month") {
-      return allTransactions.filter((t) => t.transaction_date.startsWith(selectedPeriod));
+      return transactions.filter((t) => t.transaction_date.startsWith(selectedPeriod));
     } else if (period === "year") {
-      return allTransactions.filter((t) => t.transaction_date.startsWith(selectedPeriod));
+      return transactions.filter((t) => t.transaction_date.startsWith(selectedPeriod));
     }
   }
 
-  return allTransactions;
+  return transactions;
 }
 
-// Helper untuk mendapatkan transactions periode sebelumnya
-function getPreviousPeriodTransactions(period: PeriodKey, selectedPeriod?: string): Transaction[] {
-  const allTransactions = getAllTransactions();
+function getPreviousPeriodTransactions(
+  period: PeriodKey,
+  transactions: Transaction[],
+  selectedPeriod?: string,
+): Transaction[] {
   const today = new Date();
 
   if (!selectedPeriod) {
-    // Default: periode sebelumnya dari periode saat ini
     if (period === "week") {
       return [];
     } else if (period === "month") {
       const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const year = prevMonth.getFullYear();
       const month = String(prevMonth.getMonth() + 1).padStart(2, "0");
-      return allTransactions.filter((t) => t.transaction_date.startsWith(`${year}-${month}`));
+      return transactions.filter((t) => t.transaction_date.startsWith(`${year}-${month}`));
     } else if (period === "year") {
-      return allTransactions.filter((t) => t.transaction_date.startsWith(String(today.getFullYear() - 1)));
+      return transactions.filter((t) => t.transaction_date.startsWith(String(today.getFullYear() - 1)));
     }
   } else {
-    // Hitung periode sebelumnya dari selectedPeriod
     if (period === "week") {
       const [year, week] = selectedPeriod.split("-W");
       const weekNum = parseInt(week);
       let prevWeek = weekNum - 1;
       let prevYear = parseInt(year);
-      
+
       if (prevWeek < 1) {
         prevWeek = 52;
         prevYear -= 1;
       }
-      
+
       const weekRange = getWeekRange(prevYear, prevWeek);
-      return allTransactions.filter((t) => {
+      return transactions.filter((t) => {
         const txDate = new Date(t.transaction_date);
         return txDate >= weekRange.start && txDate <= weekRange.end;
       });
@@ -186,25 +179,28 @@ function getPreviousPeriodTransactions(period: PeriodKey, selectedPeriod?: strin
       const monthNum = parseInt(month);
       let prevMonth = monthNum - 1;
       let prevYear = parseInt(year);
-      
+
       if (prevMonth < 1) {
         prevMonth = 12;
         prevYear -= 1;
       }
-      
+
       const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
-      return allTransactions.filter((t) => t.transaction_date.startsWith(prevPeriod));
+      return transactions.filter((t) => t.transaction_date.startsWith(prevPeriod));
     } else if (period === "year") {
       const prevYear = parseInt(selectedPeriod) - 1;
-      return allTransactions.filter((t) => t.transaction_date.startsWith(String(prevYear)));
+      return transactions.filter((t) => t.transaction_date.startsWith(String(prevYear)));
     }
   }
 
   return [];
 }
 
-// Helper untuk aggregate by category
-function aggregateByCategory(transactions: Transaction[], type: "expense" | "income") {
+function aggregateByCategory(
+  transactions: Transaction[],
+  type: "expense" | "income",
+  categoryMap: Record<string, ClientCategory>,
+) {
   const filtered = transactions.filter((t) => t.type === type);
   const grouped = filtered.reduce((acc, t) => {
     const catId = t.categoryId;
@@ -219,11 +215,11 @@ function aggregateByCategory(transactions: Transaction[], type: "expense" | "inc
   return Object.entries(grouped)
     .map(([catId, data]) => ({
       id: catId,
-      label: categories[catId]?.label || catId,
+      label: categoryMap[catId]?.label || catId,
       amount: data.amount,
       count: data.count,
-      icon: categories[catId]?.icon,
-      iconBg: categories[catId]?.iconBg || "bg-zinc-500",
+      iconKey: categoryMap[catId]?.iconKey,
+      iconBg: categoryMap[catId]?.iconBg || "bg-zinc-500",
     }))
     .sort((a, b) => b.amount - a.amount);
 }
@@ -237,26 +233,28 @@ const formatPercentage = (value: number) => {
 };
 
 export function LaporanPage() {
+  const { categories: categoryMap, dailyRecords, loading, error } = useFinanceData();
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
-  // Get available periods
-  const availablePeriods = useMemo(() => getAvailablePeriods(period), [period]);
+  const allTransactions = useMemo(() => getAllTransactions(dailyRecords), [dailyRecords]);
+  const availablePeriods = useMemo(() => getAvailablePeriods(period, allTransactions), [period, allTransactions]);
 
-  // Reset selectedPeriod when period type changes
-  useEffect(() => {
-    if (availablePeriods.length > 0) {
-      setSelectedPeriod(availablePeriods[0].value);
+  const normalizedSelectedPeriod = useMemo(() => {
+    if (availablePeriods.length === 0) return undefined;
+    if (selectedPeriod && availablePeriods.some((p) => p.value === selectedPeriod)) {
+      return selectedPeriod;
     }
-  }, [period, availablePeriods]);
+    return availablePeriods[0]?.value;
+  }, [selectedPeriod, availablePeriods]);
 
   const currentTransactions = useMemo(
-    () => getTransactionsByPeriod(period, selectedPeriod),
-    [period, selectedPeriod]
+    () => getTransactionsByPeriod(period, allTransactions, normalizedSelectedPeriod),
+    [period, normalizedSelectedPeriod, allTransactions],
   );
   const previousTransactions = useMemo(
-    () => getPreviousPeriodTransactions(period, selectedPeriod),
-    [period, selectedPeriod]
+    () => getPreviousPeriodTransactions(period, allTransactions, normalizedSelectedPeriod),
+    [period, normalizedSelectedPeriod, allTransactions],
   );
 
   // Calculate totals
@@ -287,12 +285,12 @@ export function LaporanPage() {
 
   // Top categories
   const topExpenseCategories = useMemo(
-    () => aggregateByCategory(currentTransactions, "expense").slice(0, 5),
-    [currentTransactions]
+    () => aggregateByCategory(currentTransactions, "expense", categoryMap).slice(0, 5),
+    [currentTransactions, categoryMap],
   );
   const topIncomeCategories = useMemo(
-    () => aggregateByCategory(currentTransactions, "income").slice(0, 5),
-    [currentTransactions]
+    () => aggregateByCategory(currentTransactions, "income", categoryMap).slice(0, 5),
+    [currentTransactions, categoryMap],
   );
 
   // Statistics
@@ -304,54 +302,16 @@ export function LaporanPage() {
 
   // Get current period label
   const currentPeriodLabel = useMemo(() => {
-    if (!selectedPeriod) return "";
-    const found = availablePeriods.find((p) => p.value === selectedPeriod);
+    if (!normalizedSelectedPeriod) return "";
+    const found = availablePeriods.find((p) => p.value === normalizedSelectedPeriod);
     return found ? found.label : "";
-  }, [selectedPeriod, availablePeriods]);
-
-  // Get previous period label
-  const previousPeriodLabel = useMemo(() => {
-    if (!selectedPeriod) return "";
-    
-    if (period === "week") {
-      const [year, week] = selectedPeriod.split("-W");
-      const weekNum = parseInt(week);
-      let prevWeek = weekNum - 1;
-      let prevYear = parseInt(year);
-      
-      if (prevWeek < 1) {
-        prevWeek = 52;
-        prevYear -= 1;
-      }
-      
-      const weekRange = getWeekRange(prevYear, prevWeek);
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-      const startMonth = monthNames[weekRange.start.getMonth()];
-      const endMonth = monthNames[weekRange.end.getMonth()];
-      return `Minggu ${prevWeek} (${weekRange.start.getDate()} ${startMonth} - ${weekRange.end.getDate()} ${endMonth})`;
-    } else if (period === "month") {
-      const [year, month] = selectedPeriod.split("-");
-      const monthNum = parseInt(month);
-      let prevMonth = monthNum - 1;
-      let prevYear = parseInt(year);
-      
-      if (prevMonth < 1) {
-        prevMonth = 12;
-        prevYear -= 1;
-      }
-      
-      const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      return `${monthNames[prevMonth - 1]} ${prevYear}`;
-    } else {
-      const prevYear = parseInt(selectedPeriod) - 1;
-      return String(prevYear);
-    }
-  }, [selectedPeriod, period]);
+  }, [normalizedSelectedPeriod, availablePeriods]);
 
   // Navigation helpers
   const currentIndex = useMemo(() => {
-    return availablePeriods.findIndex((p) => p.value === selectedPeriod);
-  }, [availablePeriods, selectedPeriod]);
+    if (!normalizedSelectedPeriod) return -1;
+    return availablePeriods.findIndex((p) => p.value === normalizedSelectedPeriod);
+  }, [availablePeriods, normalizedSelectedPeriod]);
 
   const canGoNext = currentIndex < availablePeriods.length - 1;
   const canGoPrev = currentIndex > 0;
@@ -367,6 +327,18 @@ export function LaporanPage() {
       setSelectedPeriod(availablePeriods[currentIndex - 1].value);
     }
   };
+
+  if (loading) {
+    return <div className="py-20 text-center text-zinc-500">Memuat data…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="py-20 text-center text-red-400">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="pb-10">
@@ -392,7 +364,7 @@ export function LaporanPage() {
       </section>
 
       {/* Period Navigation */}
-      {availablePeriods.length > 0 && selectedPeriod && (
+      {availablePeriods.length > 0 && normalizedSelectedPeriod && (
         <section className="mt-4">
           <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
             <button
@@ -430,12 +402,12 @@ export function LaporanPage() {
       )}
 
       {/* Alternative: Dropdown selector for period */}
-      {availablePeriods.length > 0 && selectedPeriod && (
+      {availablePeriods.length > 0 && normalizedSelectedPeriod && (
         <section className="mt-3">
           <div className="relative">
             <select
               className="flex w-full items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-4 py-3 text-left text-sm text-white appearance-none"
-              value={selectedPeriod}
+              value={normalizedSelectedPeriod}
               onChange={(event) => setSelectedPeriod(event.target.value)}
             >
               {availablePeriods.map((p) => (
@@ -513,11 +485,11 @@ export function LaporanPage() {
         <section className="mt-6 rounded-2xl border border-white/5 bg-white/5 px-5 py-4">
           <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">Top Kategori Pengeluaran</div>
           <div className="mt-4 space-y-4">
-            {topExpenseCategories.map((category, index) => (
+            {topExpenseCategories.map((category) => (
               <div key={category.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-full text-black ${category.iconBg}`}>
-                    {category.icon}
+                    {renderIcon(category.iconKey ?? "FiGrid", "h-5 w-5")}
                   </div>
                   <div>
                     <div className="text-base text-white">{category.label}</div>
@@ -545,7 +517,7 @@ export function LaporanPage() {
               <div key={category.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-full text-black ${category.iconBg}`}>
-                    {category.icon}
+                    {renderIcon(category.iconKey ?? "FiGrid", "h-5 w-5")}
                   </div>
                   <div>
                     <div className="text-base text-white">{category.label}</div>
@@ -608,4 +580,5 @@ export function LaporanPage() {
 }
 
 export default LaporanPage;
+
 

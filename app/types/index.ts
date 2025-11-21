@@ -8,6 +8,8 @@ export type Category = {
   label: string;
   icon: ReactNode;
   iconBg: string;
+  flow?: Transaction["type"];
+  iconKey?: string;
 };
 
 export type Transaction = {

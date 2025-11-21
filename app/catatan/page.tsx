@@ -1,9 +1,17 @@
-import { categories, dailyRecords, summaryItems } from "@/app/mock/catatan";
+import { fetchCategoryMap } from "@/lib/categories";
+import { isLightColor, resolveCategoryColor } from "@/lib/categoryColors";
+import { buildSummaryItems, fetchDailyRecords } from "@/lib/transactions";
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("id-ID", { minimumFractionDigits: 0 });
 
-export function CatatanPage() {
+export async function CatatanPage() {
+  const [categories, dailyRecords] = await Promise.all([
+    fetchCategoryMap({ iconClassName: "h-5 w-5" }),
+    fetchDailyRecords(),
+  ]);
+  const summaryItems = buildSummaryItems(dailyRecords);
+
   return (
     <>
       <header>
@@ -48,14 +56,25 @@ export function CatatanPage() {
             <ul className="mt-4 space-y-3">
               {record.items.map((item) => {
                 const category = categories[item.categoryId];
+                const iconBgClass = category?.iconBg ?? "bg-white/10";
+                const iconBgColor = resolveCategoryColor(category?.iconBg);
+                const textColor = isLightColor(iconBgColor) ? "text-black" : "text-white";
+                const iconNode =
+                  category?.icon ?? (
+                    <span className="text-xs font-semibold uppercase text-white">
+                      {item.categoryId.slice(0, 2)}
+                    </span>
+                  );
+
                 return (
                   <li key={item.id} className="flex items-center justify-between border-b border-white/10 px-0 py-3 last:border-b-0">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`flex h-12 w-12 items-center justify-center rounded-full text-black ${category.iconBg}`}
-                        title={category.label}
+                        className={`flex h-12 w-12 items-center justify-center rounded-full ${iconBgClass} ${textColor}`}
+                        style={{ backgroundColor: iconBgColor }}
+                        title={category?.label ?? item.categoryId}
                       >
-                        {category.icon}
+                        {iconNode}
                       </div>
                       <p className="text-base capitalize text-white">{item.title}</p>
                     </div>
